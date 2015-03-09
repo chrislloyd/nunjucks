@@ -394,6 +394,11 @@ var Parser = Object.extend({
                       tag.colno);
         }
 
+        // PINTEREST CUSTOMIZATION BEGIN
+        // Skip over the "scoped" modifier.
+        this.skipSymbol('scoped');
+        // PINTEREST CUSTOMIZATION BEGIN
+
         this.advanceAfterBlockEnd(tag.value);
 
         node.body = this.parseUntilBlocks('endblock');
