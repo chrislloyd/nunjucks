@@ -534,12 +534,17 @@ var Compiler = Object.extend({
 
             // We are running this for every var, but it's very
             // uncommon to assign to multiple vars anyway
-            this.emitLine('if(!frame.parent) {');
+            
+            // BEGIN CUSTOMIZATION: Export normal variables - not just macros.  This matches Jinja.
+            //this.emitLine('if(!frame.parent) {');
+            // END CUSTOMIZATION
             this.emitLine('context.setVariable("' + name + '", ' + id + ');');
             if(name.charAt(0) != '_') {
                 this.emitLine('context.addExport("' + name + '");');
             }
-            this.emitLine('}');
+            // BEGIN CUSTOMIZATION
+            //this.emitLine('}');
+            // END CUSTOMIZATION
         }, this);
     },
 
