@@ -1,8 +1,18 @@
 {
-    "name": "nunjucks",
-    "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired)",
+    "name": "nunjucks-pinterest",
+    "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja",
     "version": "1.2.0",
-    "author": "James Long <longster@gmail.com>",
+    "author": {
+      "name": "Pinterest Web",
+      "email": "about@pinterest.com",
+      "url": "engineering.pinterest.com"
+    },
+    "contributors": [
+      {
+        "name": "James Long",
+        "email": "<longster@gmail.com>"
+      }
+    ],
     "dependencies": {
         "optimist": "*",
         "chokidar": "~0.12.5"
