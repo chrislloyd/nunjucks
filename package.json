@@ -1,50 +1,52 @@
 {
-    "name": "nunjucks-pinterest",
-    "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja",
-    "version": "1.2.0",
-    "author": {
-      "name": "Pinterest Web",
-      "email": "about@pinterest.com",
-      "url": "engineering.pinterest.com"
-    },
-    "contributors": [
-      {
-        "name": "James Long",
-        "email": "<longster@gmail.com>"
-      }
-    ],
-    "dependencies": {
-        "optimist": "*",
-        "chokidar": "~0.12.5"
-    },
-    "browser" : "./browser/nunjucks.js",
-    "devDependencies": {
-        "expect.js": "*",
-        "mocha": "*",
-        "uglify-js": "*",
-        "express": "4.x",
-        "supertest": "*",
-        "istanbul": "0.3.x"
-    },
-    "engines": {
-        "node": "*"
-    },
-    "scripts": {
-        "test": "make test"
-    },
-    "bin": {
-        "nunjucks-precompile": "./bin/precompile"
-    },
-    "main": "index",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/mozilla/nunjucks.git"
-    },
-    "license": [{
-        "type": "BSD",
-        "url": "https://github.com/mozilla/nunjucks/blob/master/LICENSE"
-    }],
-    "bugs": {
-        "url": "https://github.com/mozilla/nunjucks/issues"
+  "name": "nunjucks-pinterest",
+  "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja",
+  "version": "1.2.1",
+  "author": {
+    "name": "Pinterest Web",
+    "email": "about@pinterest.com",
+    "url": "engineering.pinterest.com"
+  },
+  "contributors": [
+    {
+      "name": "James Long",
+      "email": "<longster@gmail.com>"
     }
+  ],
+  "dependencies": {
+    "optimist": "*",
+    "chokidar": "~0.12.5"
+  },
+  "browser": "./browser/nunjucks.js",
+  "devDependencies": {
+    "expect.js": "*",
+    "mocha": "*",
+    "uglify-js": "*",
+    "express": "4.x",
+    "supertest": "*",
+    "istanbul": "0.3.x"
+  },
+  "engines": {
+    "node": "*"
+  },
+  "scripts": {
+    "test": "make test"
+  },
+  "bin": {
+    "nunjucks-precompile": "./bin/precompile"
+  },
+  "main": "index",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mozilla/nunjucks.git"
+  },
+  "license": [
+    {
+      "type": "BSD",
+      "url": "https://github.com/mozilla/nunjucks/blob/master/LICENSE"
+    }
+  ],
+  "bugs": {
+    "url": "https://github.com/mozilla/nunjucks/issues"
+  }
 }
