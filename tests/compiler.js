@@ -1,7 +1,9 @@
 (function() {
+    'use strict';
+
     var expect, util, Environment, Template, fs;
 
-    if(typeof require != 'undefined') {
+    if(typeof require !== 'undefined') {
         expect = require('expect.js');
         util = require('./util');
         Environment = require('../src/environment').Environment;
@@ -62,6 +64,21 @@
         it('should not treat falsy values the same as undefined', function(done) {
             equal('{{ foo }}', {foo: 0}, '0');
             equal('{{ foo }}', {foo: false}, 'false');
+            finish(done);
+        });
+
+        it('should display none as empty string', function(done) {
+            equal('{{ none }}', '');
+            finish(done);
+        });
+
+        it('should compile none as falsy', function(done) {
+            equal('{% if not none %}yes{% endif %}', 'yes');
+            finish(done);
+        });
+
+        it('should compile none as null, not undefined', function(done) {
+            equal('{{ none|default("d", false) }}', '');
             finish(done);
         });
 
@@ -205,20 +222,19 @@
                   { items: { foo: 1, bar: 2 }},
                   'showing fooshowing bar');
 
-            render('{% set item = passed_var %}' +
-                   '{% include "item.html" %}\n' +
-                   '{% ' + block + ' i in passed_iter %}' +
-                     '{% set item = i %}' +
-                     '{% include "item.html" %}\n' +
-                   '{% ' + end + ' %}',
-                   {
-                     passed_var: 'test',
-                     passed_iter: ['1', '2', '3']
-                   },
-                   {},
-                   function(err, res) {
-                       expect(res).to.be('showing test\nshowing 1\nshowing 2\nshowing 3\n');
-                   });
+            var res = render(
+                '{% set item = passed_var %}' +
+                '{% include "item.html" %}\n' +
+                '{% ' + block + ' i in passed_iter %}' +
+                '{% set item = i %}' +
+                '{% include "item.html" %}\n' +
+                '{% ' + end + ' %}',
+                {
+                    passed_var: 'test',
+                    passed_iter: ['1', '2', '3']
+                }
+            );
+            expect(res).to.be('showing test\nshowing 1\nshowing 2\nshowing 3\n');
         }
 
         it('should compile for blocks', function(done) {
@@ -317,6 +333,13 @@
                            expect(res).to.be('hello somecontenthere');
                        });
 
+                render('{% block content %}{% set foo = tmpl | getContents %}{{ foo }}{% endblock %}',
+                       { tmpl: 'tests/templates/for-async-content.html' },
+                       opts,
+                       function(err, res) {
+                           expect(res).to.be('somecontenthere');
+                       });
+
                 render('{% block content %}{% include "async.html" %}{% endblock %}',
                        { tmpl: 'tests/templates/for-async-content.html' },
                        opts,
@@ -376,6 +399,13 @@
             equal('{% if "a" in vals %}yes{% endif %}',
                   {'vals': ['a', 'b']}, 'yes');
 
+            finish(done);
+        });
+
+        it('should compile string concatenations with tilde', function(done){
+            equal('{{ 4 ~ \'hello\' }}', '4hello');
+            equal('{{ 4 ~ 5 }}', '45');
+            equal('{{ \'a\' ~ \'b\' ~ 5 }}', 'ab5');
             finish(done);
         });
 
@@ -490,11 +520,11 @@
         it('should import templates', function(done) {
             equal('{% import "import.html" as imp %}' +
                   '{{ imp.foo() }} {{ imp.bar }}',
-                  "Here's a macro baz");
+                  'Here\'s a macro baz');
 
             equal('{% from "import.html" import foo as baz, bar %}' +
                   '{{ bar }} {{ baz() }}',
-                  "baz Here's a macro");
+                  'baz Here\'s a macro');
 
             // TODO: Should the for loop create a new frame for each
             // iteration? As it is, `num` is set on all iterations after
@@ -510,16 +540,53 @@
             finish(done);
         });
 
+        it('should import template objects', function(done) {
+            var tmpl = new Template('{% macro foo() %}Inside a macro{% endmacro %}' +
+                                    '{% set bar = "BAZ" %}');
+
+            equal('{% import tmpl as imp %}' +
+                  '{{ imp.foo() }} {{ imp.bar }}',
+                  { tmpl : tmpl },
+                  'Inside a macro BAZ');
+
+            equal('{% from tmpl import foo as baz, bar %}' +
+                  '{{ bar }} {{ baz() }}',
+                  { tmpl : tmpl },
+                  'BAZ Inside a macro');
+
+            finish(done);
+        });
+
         it('should import templates with context', function(done) {
             equal('{% set bar = "BAR" %}' +
                   '{% import "import-context.html" as imp with context %}' +
                   '{{ imp.foo() }}',
-                  "Here's BAR");
+                  'Here\'s BAR');
 
             equal('{% set bar = "BAR" %}' +
                   '{% from "import-context.html" import foo with context %}' +
                   '{{ foo() }}',
-                  "Here's BAR");
+                  'Here\'s BAR');
+
+            equal('{% set bar = "BAR" %}' +
+                  '{% import "import-context-set.html" as imp %}' +
+                  '{{ bar }}',
+                  'BAR');
+
+            equal('{% set bar = "BAR" %}' +
+                  '{% import "import-context-set.html" as imp %}' +
+                  '{{ imp.bar }}',
+                  'FOO');
+
+            equal('{% set bar = "BAR" %}' +
+                  '{% import "import-context-set.html" as imp with context %}' +
+                  '{{ bar }}{{ buzz }}',
+                  'FOO');
+
+            equal('{% set bar = "BAR" %}' +
+                  '{% import "import-context-set.html" as imp with context %}' +
+                  '{{ imp.bar }}{{ buzz }}',
+                  'FOO');
 
             finish(done);
         });
@@ -528,12 +595,12 @@
             equal('{% set bar = "BAR" %}' +
                   '{% import "import-context.html" as imp without context %}' +
                   '{{ imp.foo() }}',
-                  "Here's ");
+                  'Here\'s ');
 
             equal('{% set bar = "BAR" %}' +
                   '{% from "import-context.html" import foo without context %}' +
                   '{{ foo() }}',
-                  "Here's ");
+                  'Here\'s ');
 
             finish(done);
         });
@@ -542,12 +609,12 @@
             equal('{% set bar = "BAR" %}' +
                   '{% import "import-context.html" as imp %}' +
                   '{{ imp.foo() }}',
-                  "Here's ");
+                  'Here\'s ');
 
             equal('{% set bar = "BAR" %}' +
                   '{% from "import-context.html" import foo %}' +
                   '{{ foo() }}',
-                  "Here's ");
+                  'Here\'s ');
 
             finish(done);
         });
@@ -572,9 +639,54 @@
             render('{% extends "base.html" %}' +
                    '{% block notReal %}{{ foo() }}{% endblock %}',
                    { foo: function() { count++; }},
-                   function(err, res) {
+                   function() {
                        expect(count).to.be(0);
                    });
+
+            finish(done);
+        });
+
+        it('should inherit template objects', function(done) {
+            var tmpl = new Template('Foo{% block block1 %}Bar{% endblock %}' +
+                                    '{% block block2 %}Baz{% endblock %}Whizzle');
+
+            equal('hola {% extends tmpl %} fizzle mumble',
+                  { tmpl: tmpl },
+                  'FooBarBazWhizzle');
+
+            equal('{% extends tmpl %}' +
+                  '{% block block1 %}BAR{% endblock %}' +
+                  '{% block block2 %}BAZ{% endblock %}',
+                  { tmpl: tmpl },
+                  'FooBARBAZWhizzle');
+
+            finish(done);
+        });
+
+        it('should conditionally inherit templates', function(done) {
+            equal('{% if false %}{% extends "base.html" %}{% endif %}' +
+                  '{% block block1 %}BAR{% endblock %}',
+                  'BAR');
+
+            equal('{% if true %}{% extends "base.html" %}{% endif %}' +
+                  '{% block block1 %}BAR{% endblock %}',
+                  'FooBARBazFizzle');
+
+            equal('{% if true %}' +
+                  '{% extends "base.html" %}' +
+                  '{% else %}' +
+                  '{% extends "base2.html" %}' +
+                  '{% endif %}' +
+                  '{% block block1 %}HELLO{% endblock %}',
+                  'FooHELLOBazFizzle');
+
+            equal('{% if false %}' +
+                  '{% extends "base.html" %}' +
+                  '{% else %}' +
+                  '{% extends "base2.html" %}' +
+                  '{% endif %}' +
+                  '{% block item %}hello{{ item }}{% endblock %}',
+                  'hello1hello2');
 
             finish(done);
         });
@@ -609,12 +721,47 @@
                   'hello world FooInclude james');
 
             equal('hello world {% include tmpl %}',
-                  { name: 'thedude', tmpl: "include.html" },
+                  { name: 'thedude', tmpl: 'include.html' },
                   'hello world FooInclude thedude');
 
             equal('hello world {% include data.tmpl %}',
-                  { name: 'thedude', data: {tmpl: "include.html"} },
+                  { name: 'thedude', data: {tmpl: 'include.html'} },
                   'hello world FooInclude thedude');
+
+            finish(done);
+        });
+
+        it('should include template objects', function(done) {
+            var tmpl = new Template('FooInclude {{ name }}');
+
+            equal('hello world {% include tmpl %}',
+                  { name: 'thedude', tmpl: tmpl },
+                  'hello world FooInclude thedude');
+
+            finish(done);
+        });
+
+        it('should throw an error when including a file that does not exist', function(done) {
+            render(
+                '{% include "missing.html" %}',
+                {},
+                { noThrow: true },
+                function(err, res) {
+                    expect(res).to.be(undefined);
+                    expect(err).to.match(/template not found: missing.html/);
+                }
+            );
+
+            finish(done);
+        });
+
+        it('should fail silently on missing templates if requested', function(done) {
+            equal('hello world {% include "missing.html" ignore missing %}',
+                  'hello world ');
+
+            equal('hello world {% include "missing.html" ignore missing %}',
+                  { name: 'thedude' },
+                  'hello world ');
 
             finish(done);
         });
@@ -747,12 +894,13 @@
 
         it('should allow custom tag compilation', function(done) {
             function testExtension() {
+                // jshint validthis: true
                 this.tags = ['test'];
 
                 this.parse = function(parser, nodes) {
                     parser.advanceAfterBlockEnd();
 
-                    var content = parser.parseUntilBlocks("endtest");
+                    var content = parser.parseUntilBlocks('endtest');
                     var tag = new nodes.CallExtension(this, 'run', null, [content]);
                     parser.advanceAfterBlockEnd();
 
@@ -761,7 +909,7 @@
 
                 this.run = function(context, content) {
                     // Reverse the string
-                    return content().split("").reverse().join("");
+                    return content().split('').reverse().join('');
                 };
             }
 
@@ -775,6 +923,7 @@
 
         it('should allow custom tag compilation without content', function(done) {
             function testExtension() {
+                // jshint validthis: true
                 this.tags = ['test'];
 
                 this.parse = function(parser, nodes) {
@@ -787,7 +936,7 @@
 
                 this.run = function(context, arg1) {
                     // Reverse the string
-                    return arg1.split("").reverse().join("");
+                    return arg1.split('').reverse().join('');
                 };
             }
 
@@ -801,6 +950,7 @@
 
         it('should allow complicated custom tag compilation', function(done) {
             function testExtension() {
+                // jshint validthis: true
                 this.tags = ['test'];
 
                 /* normally this is automatically done by Environment */
@@ -823,10 +973,10 @@
                 };
 
                 this.run = function(context, body, intermediate) {
-                    var output = body().split("").join(",");
+                    var output = body().split('').join(',');
                     if(intermediate) {
                         // Reverse the string.
-                        output += intermediate().split("").reverse().join("");
+                        output += intermediate().split('').reverse().join('');
                     }
                     return output;
                 };
@@ -850,12 +1000,13 @@
 
         it('should allow custom tag with args compilation', function(done) {
             function testExtension() {
+                // jshint validthis: true
                 this.tags = ['test'];
 
                 /* normally this is automatically done by Environment */
                 this._name = 'testExtension';
 
-                this.parse = function(parser, nodes, lexer) {
+                this.parse = function(parser, nodes) {
                     var body, args = null;
                     var tok = parser.nextToken();
 
@@ -870,12 +1021,12 @@
                 };
 
                 this.run = function(context, prefix, kwargs, body) {
-                    if(typeof prefix == 'function') {
+                    if(typeof prefix === 'function') {
                         body = prefix;
                         prefix = '';
                         kwargs = {};
                     }
-                    else if(typeof kwargs == 'function') {
+                    else if(typeof kwargs === 'function') {
                         body = kwargs;
                         kwargs = {};
                     }
@@ -906,8 +1057,8 @@
             finish(done);
         });
 
-        it('should not autoescape by default', function(done) {
-            equal('{{ foo }}', { foo: '"\'<>&'}, '"\'<>&');
+        it('should autoescape by default', function(done) {
+            equal('{{ foo }}', { foo: '"\'<>&'}, '&quot;&#39;&lt;&gt;&amp;');
             finish(done);
         });
 
@@ -975,6 +1126,7 @@
 
         it('should not autoescape when extension set false', function(done) {
             function testExtension() {
+                // jshint validthis: true
                 this.tags = ['test'];
 
                 this.autoescape = false;
@@ -986,7 +1138,7 @@
                     return new nodes.CallExtension(this, 'run', args, null);
                 };
 
-                this.run = function(context) {
+                this.run = function() {
                     // Reverse the string
                     return '<b>Foo</b>';
                 };
@@ -1033,5 +1185,43 @@
 
             finish(done);
         });
+
+        it('should handle filter blocks', function(done) {
+            equal('{% filter title %}may the force be with you{% endfilter %}',
+                  'May The Force Be With You');
+
+            equal('{% filter replace("force", "forth") %}may the force be with you{% endfilter %}',
+                  'may the forth be with you');
+            finish(done);
+        });
+
+        it('should throw an error when including a file that calls an undefined macro', function(done) {
+            render(
+                '{% include "undefined-macro.html" %}',
+                {},
+                { noThrow: true },
+                function(err, res) {
+                    expect(res).to.be(undefined);
+                    expect(err).to.match(/Unable to call `\w+`, which is undefined or falsey/);
+                }
+            );
+
+            finish(done);
+        });
+
+        it('should throw an error when including a file that imports macro that calls an undefined macro', function(done) {
+            render(
+                '{% include "import-macro-call-undefined-macro.html" %}',
+                { 'list' : [1, 2, 3] },
+                { noThrow: true },
+                function(err, res) {
+                    expect(res).to.be(undefined);
+                    expect(err).to.match(/Unable to call `\w+`, which is undefined or falsey/);
+                }
+            );
+
+            finish(done);
+        });
+
     });
 })();

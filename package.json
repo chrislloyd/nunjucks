@@ -1,7 +1,7 @@
 {
   "name": "nunjucks-pinterest",
-  "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja",
-  "version": "1.2.2",
+  "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja.",
+  "version": "2.3.0-pinterest",
   "author": {
     "name": "Pinterest Web",
     "email": "about@pinterest.com",
@@ -14,23 +14,29 @@
     }
   ],
   "dependencies": {
-    "optimist": "*",
-    "chokidar": "~0.12.5"
+    "asap": "^2.0.3",
+    "chokidar": "^1.0.0",
+    "optimist": "*"
   },
   "browser": "./browser/nunjucks.js",
   "devDependencies": {
     "expect.js": "*",
-    "mocha": "*",
-    "uglify-js": "*",
     "express": "4.x",
+    "istanbul": "0.3.x",
+    "jshint": "2.8.x",
+    "mocha": "*",
+    "node-libs-browser": "^0.4.3",
     "supertest": "*",
-    "istanbul": "0.3.x"
+    "uglify-js": "*",
+    "webpack": "^1.8.11"
   },
   "engines": {
     "node": "*"
   },
   "scripts": {
-    "test": "make test"
+    "lint": "jshint .",
+    "test": "jshint . && istanbul cover ./node_modules/mocha/bin/_mocha -- -b -R tap tests",
+    "browserfiles": "./bin/bundle"
   },
   "bin": {
     "nunjucks-precompile": "./bin/precompile"
@@ -40,12 +46,11 @@
     "type": "git",
     "url": "https://github.com/mozilla/nunjucks.git"
   },
-  "license": [
-    {
-      "type": "BSD",
-      "url": "https://github.com/mozilla/nunjucks/blob/master/LICENSE"
-    }
+  "keywords": [
+    "template",
+    "templating"
   ],
+  "license": "BSD-2-Clause",
   "bugs": {
     "url": "https://github.com/mozilla/nunjucks/issues"
   }

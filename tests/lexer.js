@@ -1,15 +1,17 @@
 (function() {
+    'use strict';
+
     var expect, lib, lexer;
 
-    if(typeof require != 'undefined') {
+    if(typeof require !== 'undefined') {
         expect = require('expect.js');
         lib = require('../src/lib');
         lexer = require('../src/lexer');
     }
     else {
         expect = window.expect;
-        lib = nunjucks.require('lib');
-        lexer = nunjucks.require('lexer');
+        lib = nunjucks.lib;
+        lexer = nunjucks.lexer;
     }
 
     function _hasTokens(ws, tokens, types) {
@@ -18,7 +20,7 @@
             var tok = tokens.nextToken();
 
             if(!ws) {
-                while(tok && tok.type == lexer.TOKEN_WHITESPACE) {
+                while(tok && tok.type === lexer.TOKEN_WHITESPACE) {
                     tok = tokens.nextToken();
                 }
             }
@@ -71,6 +73,80 @@
                             lexer.TOKEN_DATA);
         });
 
+        it('should trim blocks', function () {
+            tokens = lexer.lex('  {% if true %}\n    foo\n  {% endif %}\n', {trimBlocks: true});
+            hasTokens(tokens,
+                      [lexer.TOKEN_DATA, '  '],
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BOOLEAN,
+                      lexer.TOKEN_BLOCK_END,
+                      [lexer.TOKEN_DATA, '    foo\n  '],
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BLOCK_END);
+        });
+
+        it('should trim windows-style CRLF line endings after blocks', function () {
+            tokens = lexer.lex('  {% if true %}\r\n    foo\r\n  {% endif %}\r\n', {trimBlocks: true});
+            hasTokens(tokens,
+                [lexer.TOKEN_DATA, '  '],
+                lexer.TOKEN_BLOCK_START,
+                lexer.TOKEN_SYMBOL,
+                lexer.TOKEN_BOOLEAN,
+                lexer.TOKEN_BLOCK_END,
+                [lexer.TOKEN_DATA, '    foo\r\n  '],
+                lexer.TOKEN_BLOCK_START,
+                lexer.TOKEN_SYMBOL,
+                lexer.TOKEN_BLOCK_END);
+        });
+
+        it('should not trim CR after blocks', function () {
+            tokens = lexer.lex('  {% if true %}\r    foo\r\n  {% endif %}\r', {trimBlocks: true});
+            hasTokens(tokens,
+                [lexer.TOKEN_DATA, '  '],
+                lexer.TOKEN_BLOCK_START,
+                lexer.TOKEN_SYMBOL,
+                lexer.TOKEN_BOOLEAN,
+                lexer.TOKEN_BLOCK_END,
+                [lexer.TOKEN_DATA, '\r    foo\r\n  '],
+                lexer.TOKEN_BLOCK_START,
+                lexer.TOKEN_SYMBOL,
+                lexer.TOKEN_BLOCK_END,
+                [lexer.TOKEN_DATA, '\r']);
+        });
+
+        it('should lstrip and trim blocks', function () {
+            tokens = lexer.lex('test\n {% if true %}\n  foo\n {% endif %}\n</div>', {
+                lstripBlocks: true,
+                trimBlocks: true
+            });
+            hasTokens(tokens,
+                      [lexer.TOKEN_DATA, 'test\n'],
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BOOLEAN,
+                      lexer.TOKEN_BLOCK_END,
+                      [lexer.TOKEN_DATA, '  foo\n'],
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BLOCK_END,
+                      [lexer.TOKEN_DATA, '</div>']);
+        });
+
+        it('should lstrip and not collapse whitespace between blocks', function () {
+            tokens = lexer.lex('   {% t %} {% t %}', {lstripBlocks: true});
+            hasTokens(tokens,
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BLOCK_END,
+                      [lexer.TOKEN_DATA, ' '],
+                      lexer.TOKEN_BLOCK_START,
+                      lexer.TOKEN_SYMBOL,
+                      lexer.TOKEN_BLOCK_END);
+        });
+
+
         it('should parse variable start and end', function() {
             tokens = lexer.lex('data {{ foo }} bar bizzle');
             hasTokens(tokens,
@@ -87,7 +163,7 @@
             tok = tokens.nextToken();
             tok = tokens.nextToken();
             expect(tok.type).to.be(lexer.TOKEN_SYMBOL);
-            expect(tok.value).to.be("foo");
+            expect(tok.value).to.be('foo');
         });
 
         it('should parse block start and end', function() {
@@ -101,13 +177,14 @@
         });
 
         it('should parse basic types', function() {
-            tokens = lexer.lex('{{ 3 4.5 true false foo "hello" \'boo\' r/regex/ }}');
+            tokens = lexer.lex('{{ 3 4.5 true false none foo "hello" \'boo\' r/regex/ }}');
             hasTokens(tokens,
                       lexer.TOKEN_VARIABLE_START,
                       lexer.TOKEN_INT,
                       lexer.TOKEN_FLOAT,
                       lexer.TOKEN_BOOLEAN,
                       lexer.TOKEN_BOOLEAN,
+                      lexer.TOKEN_NONE,
                       lexer.TOKEN_SYMBOL,
                       lexer.TOKEN_STRING,
                       lexer.TOKEN_STRING,
@@ -242,7 +319,7 @@
         }),
 
         it('should allow changing the variable start and end', function() {
-            tokens = lexer.lex('data {= var =}', {variableStart: '{=', variableEnd: '=}'});
+            tokens = lexer.lex('data {= var =}', {tags: {variableStart: '{=', variableEnd: '=}'}});
             hasTokens(tokens,
                       lexer.TOKEN_DATA,
                       lexer.TOKEN_VARIABLE_START,
@@ -251,14 +328,14 @@
         }),
 
         it('should allow changing the block start and end', function() {
-            tokens = lexer.lex('{= =}', {blockStart: '{=', blockEnd: '=}'});
+            tokens = lexer.lex('{= =}', {tags: {blockStart: '{=', blockEnd: '=}'}});
             hasTokens(tokens,
                       lexer.TOKEN_BLOCK_START,
                       lexer.TOKEN_BLOCK_END);
         }),
 
         it('should allow changing the variable start and end', function() {
-            tokens = lexer.lex('data {= var =}', {variableStart: '{=', variableEnd: '=}'});
+            tokens = lexer.lex('data {= var =}', {tags: {variableStart: '{=', variableEnd: '=}'}});
             hasTokens(tokens,
                       lexer.TOKEN_DATA,
                       lexer.TOKEN_VARIABLE_START,
@@ -267,7 +344,7 @@
         }),
 
         it('should allow changing the comment start and end', function() {
-            tokens = lexer.lex('<!-- A comment! -->', {commentStart: '<!--', commentEnd: '-->'});
+            tokens = lexer.lex('<!-- A comment! -->', {tags: {commentStart: '<!--', commentEnd: '-->'}});
             hasTokens(tokens,
                       lexer.TOKEN_COMMENT);
         }),
@@ -276,13 +353,13 @@
          * Test that this bug is fixed: https://github.com/mozilla/nunjucks/issues/235
          */
         it('should have individual lexer tag settings for each environment', function() {
-            tokens = lexer.lex('{=', {variableStart: '{='});
+            tokens = lexer.lex('{=', {tags: {variableStart: '{='}});
             hasTokens(tokens, lexer.TOKEN_VARIABLE_START);
 
             tokens = lexer.lex('{{');
             hasTokens(tokens, lexer.TOKEN_VARIABLE_START);
 
-            tokens = lexer.lex('{{', {variableStart: '<<<'});
+            tokens = lexer.lex('{{', {tags: {variableStart: '<<<'}});
             hasTokens(tokens, lexer.TOKEN_DATA);
 
             tokens = lexer.lex('{{');

@@ -1,3 +1,5 @@
+'use strict';
+
 var nodes = require('./nodes');
 var lib = require('./lib');
 
@@ -135,6 +137,9 @@ function liftFilters(ast, asyncFilters) {
         if(node instanceof nodes.Output) {
             return _liftFilters(node, asyncFilters);
         }
+        else if(node instanceof nodes.Set) {
+            return _liftFilters(node, asyncFilters, 'value');
+        }
         else if(node instanceof nodes.For) {
             return _liftFilters(node, asyncFilters, 'arr');
         }
@@ -158,7 +163,7 @@ function liftSuper(ast) {
 
         blockNode.body = walk(blockNode.body, function(node) {
             if(node instanceof nodes.FunCall &&
-               node.name.value == 'super') {
+               node.name.value === 'super') {
                 hasSuper = true;
                 return new nodes.Symbol(node.lineno, node.colno, symbol);
             }
@@ -185,7 +190,8 @@ function convertStatements(ast) {
                node instanceof nodes.IfAsync ||
                node instanceof nodes.AsyncEach ||
                node instanceof nodes.AsyncAll ||
-               node instanceof nodes.CallExtensionAsync) {
+               node instanceof nodes.CallExtensionAsync ||
+               node instanceof nodes.Include) {
                 async = true;
                 // Stop iterating by returning the node
                 return node;
@@ -220,7 +226,7 @@ function cps(ast, asyncFilters) {
     return convertStatements(liftSuper(liftFilters(ast, asyncFilters)));
 }
 
-function transform(ast, asyncFilters, name) {
+function transform(ast, asyncFilters) {
     return cps(ast, asyncFilters || []);
 }
 

@@ -1,7 +1,9 @@
 (function() {
+    'use strict';
+
     var expect, lib, nodes, parser;
 
-    if(typeof require != 'undefined') {
+    if(typeof require !== 'undefined') {
         expect = require('expect.js');
         lib = require('../src/lib');
         nodes = require('../src/nodes');
@@ -9,9 +11,9 @@
     }
     else {
         expect = window.expect;
-        lib = nunjucks.require('lib');
-        nodes = nunjucks.require('nodes');
-        parser = nunjucks.require('parser');
+        lib = nunjucks.lib;
+        nodes = nunjucks.nodes;
+        parser = nunjucks.parser;
     }
 
     function _isAST(node1, node2) {
@@ -19,9 +21,6 @@
         // TODO: Clean this up (seriously, really)
 
         expect(node1.typename).to.be(node2.typename);
-
-        var children1 = (node1.children && node1.children.length) || 'null';
-        var children2 = (node2.children && node2.children.length) || 'null';
 
         if(node2 instanceof nodes.NodeList) {
             var lit = ': num-children: ';
@@ -142,34 +141,39 @@
                    [nodes.Output,
                     [nodes.Literal, 'foo']]]);
 
-            isAST(parser.parse("{{ 'foo' }}"),
+            isAST(parser.parse('{{ \'foo\' }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Literal, 'foo']]]);
 
-            isAST(parser.parse("{{ true }}"),
+            isAST(parser.parse('{{ true }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Literal, true]]]);
 
-            isAST(parser.parse("{{ false }}"),
+            isAST(parser.parse('{{ false }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Literal, false]]]);
 
-            isAST(parser.parse("{{ foo }}"),
+            isAST(parser.parse('{{ none }}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.Literal, null]]]);
+
+            isAST(parser.parse('{{ foo }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Symbol, 'foo']]]);
 
-            isAST(parser.parse("{{ r/23/gi }}"),
+            isAST(parser.parse('{{ r/23/gi }}'),
                   [nodes.Root,
                    [nodes.Output,
                      [nodes.Literal, new RegExp('23', 'gi')]]]);
         });
 
         it('should parse aggregate types', function() {
-            isAST(parser.parse("{{ [1,2,3] }}"),
+            isAST(parser.parse('{{ [1,2,3] }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Array,
@@ -177,7 +181,7 @@
                      [nodes.Literal, 2],
                      [nodes.Literal, 3]]]]);
 
-            isAST(parser.parse("{{ (1,2,3) }}"),
+            isAST(parser.parse('{{ (1,2,3) }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Group,
@@ -185,7 +189,7 @@
                      [nodes.Literal, 2],
                      [nodes.Literal, 3]]]]);
 
-            isAST(parser.parse("{{ {foo: 1, 'two': 2} }}"),
+            isAST(parser.parse('{{ {foo: 1, \'two\': 2} }}'),
                   [nodes.Root,
                    [nodes.Output,
                     [nodes.Dict,
@@ -234,6 +238,17 @@
                      [nodes.In,
                       [nodes.Symbol, 'x'],
                       [nodes.Symbol, 'y']]]]]);
+        });
+
+        it('should parse tilde', function(){
+            isAST(parser.parse('{{ 2 ~ 3 }}'),
+              [nodes.Root,
+               [nodes.Output,
+                [nodes.Concat,
+                  [nodes.Literal, 2],
+                  [nodes.Literal, 3]
+                ]]]
+              );
         });
 
         it('should parse operators with correct precedence', function() {
@@ -413,6 +428,62 @@
                     [nodes.TemplateData, 'hello {{ {% %} }}']]]);
         });
 
+        it('should parse raw with broken variables', function() {
+            isAST(parser.parse('{% raw %}{{ x }{% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.TemplateData, '{{ x }']]]);
+        });
+
+        it('should parse raw with broken blocks', function() {
+            isAST(parser.parse('{% raw %}{% if i_am_stupid }Still do your job well{% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.TemplateData, '{% if i_am_stupid }Still do your job well']]]);
+        });
+
+        it('should parse raw with pure text', function() {
+            isAST(parser.parse('{% raw %}abc{% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.TemplateData, 'abc']]]);
+        });
+
+
+        it('should parse raw with raw blocks', function() {
+            isAST(parser.parse('{% raw %}{% raw %}{{ x }{% endraw %}{% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.TemplateData, '{% raw %}{{ x }{% endraw %}']]]);
+        });
+
+        it('should parse raw with comment blocks', function() {
+          isAST(parser.parse('{% raw %}{# test {% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output,
+                    [nodes.TemplateData, '{# test ']]]);
+        });
+
+        it('should parse multiple raw blocks', function() {
+            isAST(parser.parse('{% raw %}{{ var }}{% endraw %}{{ var }}{% raw %}{{ var }}{% endraw %}'),
+                  [nodes.Root,
+                   [nodes.Output, [nodes.TemplateData, '{{ var }}']],
+                   [nodes.Output, [nodes.Symbol, 'var']],
+                   [nodes.Output, [nodes.TemplateData, '{{ var }}']]]);
+        });
+
+        it('should parse multiline multiple raw blocks', function() {
+            isAST(parser.parse('\n{% raw %}{{ var }}{% endraw %}\n{{ var }}\n{% raw %}{{ var }}{% endraw %}\n'),
+                  [nodes.Root,
+                   [nodes.Output, [nodes.TemplateData, '\n']],
+                   [nodes.Output, [nodes.TemplateData, '{{ var }}']],
+                   [nodes.Output, [nodes.TemplateData, '\n']],
+                   [nodes.Output, [nodes.Symbol, 'var']],
+                   [nodes.Output, [nodes.TemplateData, '\n']],
+                   [nodes.Output, [nodes.TemplateData, '{{ var }}']],
+                   [nodes.Output, [nodes.TemplateData, '\n']]]);
+        });
+
         it('should parse keyword and non-keyword arguments', function() {
             isAST(parser.parse('{{ foo("bar", falalalala, baz="foobar") }}'),
                   [nodes.Root,
@@ -439,7 +510,7 @@
                                '   foobar as foobarbaz %}'),
                   [nodes.Root,
                    [nodes.FromImport,
-                    [nodes.Literal, "foo/bar.html"],
+                    [nodes.Literal, 'foo/bar.html'],
                     [nodes.NodeList,
                      [nodes.Symbol, 'baz'],
                      [nodes.Pair,
@@ -533,7 +604,7 @@
 
             expect(function() {
                 parser.parse('hello {% if sdf %} data');
-            }).to.throwException(/expected endif, else, or endif/);
+            }).to.throwException(/expected elif, else, or endif/);
 
             expect(function() {
                 parser.parse('hello {% block sdf %} data');
@@ -567,24 +638,26 @@
         it('should parse custom tags', function() {
 
             function testtagExtension() {
+                // jshint validthis: true
                 this.tags = ['testtag'];
 
                 /* normally this is automatically done by Environment */
                 this._name = 'testtagExtension';
 
                 this.parse = function(parser, nodes) {
-                    var begun = parser.peekToken();
+                    parser.peekToken();
                     parser.advanceAfterBlockEnd();
                     return new nodes.CallExtension(this, 'foo');
                 };
             }
 
             function testblocktagExtension() {
+                // jshint validthis: true
                 this.tags = ['testblocktag'];
                 this._name = 'testblocktagExtension';
 
                 this.parse = function(parser, nodes) {
-                    var begun = parser.peekToken();
+                    parser.peekToken();
                     parser.advanceAfterBlockEnd();
 
                     var content = parser.parseUntilBlocks('endtestblocktag');
@@ -596,10 +669,11 @@
             }
 
             function testargsExtension() {
+                // jshint validthis: true
                 this.tags = ['testargs'];
                 this._name = 'testargsExtension';
 
-                this.parse = function(parser, nodes, tokens) {
+                this.parse = function(parser, nodes) {
                     var begun = parser.peekToken();
                     var args = null;
 
@@ -627,7 +701,7 @@
                    [nodes.CallExtension, extensions[1], 'bar', null,
                     [1, [nodes.NodeList,
                          [nodes.Output,
-                          [nodes.TemplateData, "sdfd"]]]]]]);
+                          [nodes.TemplateData, 'sdfd']]]]]]);
 
             isAST(parser.parse('{% testblocktag %}{{ 123 }}{% endtestblocktag %}',
                                extensions),
@@ -645,11 +719,11 @@
                     // coming from the template
                     [nodes.NodeList,
                      [nodes.Literal, 123],
-                     [nodes.Literal, "abc"],
+                     [nodes.Literal, 'abc'],
                      [nodes.KeywordArgs,
                       [nodes.Pair,
-                       [nodes.Symbol, "foo"],
-                       [nodes.Literal, "bar"]]]]]]);
+                       [nodes.Symbol, 'foo'],
+                       [nodes.Literal, 'bar']]]]]]);
 
             isAST(parser.parse('{% testargs %}', extensions),
                   [nodes.Root,

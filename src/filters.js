@@ -1,5 +1,14 @@
+'use strict';
+
 var lib = require('./lib');
 var r = require('./runtime');
+
+function normalize(value, defaultValue) {
+    if(value === null || value === undefined || value === false) {
+        return defaultValue;
+    }
+    return value;
+}
 
 var filters = {
     abs: function(n) {
@@ -7,10 +16,11 @@ var filters = {
     },
 
     batch: function(arr, linecount, fill_with) {
+        var i;
         var res = [];
         var tmp = [];
 
-        for(var i=0; i<arr.length; i++) {
+        for(i = 0; i < arr.length; i++) {
             if(i % linecount === 0 && tmp.length) {
                 res.push(tmp);
                 tmp = [];
@@ -21,7 +31,7 @@ var filters = {
 
         if(tmp.length) {
             if(fill_with) {
-                for(var i=tmp.length; i<linecount; i++) {
+                for(i = tmp.length; i < linecount; i++) {
                     tmp.push(fill_with);
                 }
             }
@@ -33,11 +43,13 @@ var filters = {
     },
 
     capitalize: function(str) {
+        str = normalize(str, '');
         var ret = str.toLowerCase();
         return r.copySafeness(str, ret.charAt(0).toUpperCase() + ret.slice(1));
     },
 
     center: function(str, width) {
+        str = normalize(str, '');
         width = width || 80;
 
         if(str.length >= width) {
@@ -45,18 +57,23 @@ var filters = {
         }
 
         var spaces = width - str.length;
-        var pre = lib.repeat(" ", spaces/2 - spaces % 2);
-        var post = lib.repeat(" ", spaces/2);
+        var pre = lib.repeat(' ', spaces/2 - spaces % 2);
+        var post = lib.repeat(' ', spaces/2);
         return r.copySafeness(str, pre + str + post);
     },
 
-    'default': function(val, def) {
-        return val ? val : def;
+    'default': function(val, def, bool) {
+        if(bool) {
+            return val ? val : def;
+        }
+        else {
+            return (val !== undefined) ? val : def;
+        }
     },
 
     dictsort: function(val, case_sensitive, by) {
         if (!lib.isObject(val)) {
-            throw new lib.TemplateError("dictsort filter: val must be an object");
+            throw new lib.TemplateError('dictsort filter: val must be an object');
         }
 
         var array = [];
@@ -66,13 +83,13 @@ var filters = {
         }
 
         var si;
-        if (by === undefined || by === "key") {
+        if (by === undefined || by === 'key') {
             si = 0;
-        } else if (by === "value") {
+        } else if (by === 'value') {
             si = 1;
         } else {
             throw new lib.TemplateError(
-                "dictsort filter: You can only sort by either key or value");
+                'dictsort filter: You can only sort by either key or value');
         }
 
         array.sort(function(t1, t2) {
@@ -88,14 +105,18 @@ var filters = {
                 }
             }
 
-            return a > b ? 1 : (a == b ? 0 : -1);
+            return a > b ? 1 : (a === b ? 0 : -1);
         });
 
         return array;
     },
 
+    dump: function(obj) {
+        return JSON.stringify(obj);
+    },
+
     escape: function(str) {
-        if(typeof str == 'string' ||
+        if(typeof str === 'string' ||
            str instanceof r.SafeString) {
             return lib.escape(str);
         }
@@ -115,13 +136,17 @@ var filters = {
     },
 
     indent: function(str, width, indentfirst) {
+        str = normalize(str, '');
+
+        if (str === '') return '';
+
         width = width || 4;
         var res = '';
         var lines = str.split('\n');
         var sp = lib.repeat(' ', width);
 
         for(var i=0; i<lines.length; i++) {
-            if(i == 0 && !indentfirst) {
+            if(i === 0 && !indentfirst) {
                 res += lines[i] + '\n';
             }
             else {
@@ -148,8 +173,10 @@ var filters = {
         return arr[arr.length-1];
     },
 
-    length: function(arr) {
-        return arr !== undefined ? arr.length : 0;
+    length: function(val) {
+        var value = normalize(val, '');
+
+        return value !== undefined ? value.length : 0;
     },
 
     list: function(val) {
@@ -173,12 +200,16 @@ var filters = {
                          value: val[k] };
             });
         }
+        else if(lib.isArray(val)) {
+          return val;
+        }
         else {
-            throw new lib.TemplateError("list filter: type not iterable");
+            throw new lib.TemplateError('list filter: type not iterable');
         }
     },
 
     lower: function(str) {
+        str = normalize(str, '');
         return str.toLowerCase();
     },
 
@@ -186,27 +217,87 @@ var filters = {
         return arr[Math.floor(Math.random() * arr.length)];
     },
 
+    rejectattr: function(arr, attr) {
+      return arr.filter(function (item) {
+        return !item[attr];
+      });
+    },
+
+    selectattr: function(arr, attr) {
+      return arr.filter(function (item) {
+        return !!item[attr];
+      });
+    },
+
     replace: function(str, old, new_, maxCount) {
+        var originalStr = str;
+
         if (old instanceof RegExp) {
             return str.replace(old, new_);
         }
 
-        var res = str;
-        var last = res;
-        var count = 1;
-        res = res.replace(old, new_);
-
-        while(last != res) {
-            if(count >= maxCount) {
-                break;
-            }
-
-            last = res;
-            res = res.replace(old, new_);
-            count++;
+        if(typeof maxCount === 'undefined'){
+            maxCount = -1;
         }
 
-        return r.copySafeness(str, res);
+        var res = '';  // Output
+
+        // Cast Numbers in the search term to string
+        if(typeof old === 'number'){
+            old = old + '';
+        }
+        else if(typeof old !== 'string') {
+            // If it is something other than number or string,
+            // return the original string
+            return str;
+        }
+
+        // Cast numbers in the replacement to string
+        if(typeof str === 'number'){
+            str = str + '';
+        }
+
+        // If by now, we don't have a string, throw it back
+        if(typeof str !== 'string' && !(str instanceof r.SafeString)){
+            return str;
+        }
+
+        // ShortCircuits
+        if(old === ''){
+            // Mimic the python behaviour: empty string is replaced
+            // by replacement e.g. "abc"|replace("", ".") -> .a.b.c.
+            res = new_ + str.split('').join(new_) + new_;
+            return r.copySafeness(str, res);
+        }
+
+        var nextIndex = str.indexOf(old);
+        // if # of replacements to perform is 0, or the string to does
+        // not contain the old value, return the string
+        if(maxCount === 0 || nextIndex === -1){
+            return str;
+        }
+
+        var pos = 0;
+        var count = 0; // # of replacements made
+
+        while(nextIndex  > -1 && (maxCount === -1 || count < maxCount)){
+            // Grab the next chunk of src string and add it with the
+            // replacement, to the result
+            res += str.substring(pos, nextIndex) + new_;
+            // Increment our pointer in the src string
+            pos = nextIndex + old.length;
+            count++;
+            // See if there are any more replacements to be made
+            nextIndex = str.indexOf(old, pos);
+        }
+
+        // We've either reached the end, or done the max # of
+        // replacements, tack on any remaining string
+        if(pos < str.length) {
+            res += str.substring(pos);
+        }
+
+        return r.copySafeness(originalStr, res);
     },
 
     reverse: function(val) {
@@ -232,10 +323,10 @@ var filters = {
         var factor = Math.pow(10, precision);
         var rounder;
 
-        if(method == 'ceil') {
+        if(method === 'ceil') {
             rounder = Math.ceil;
         }
-        else if(method == 'floor') {
+        else if(method === 'floor') {
             rounder = Math.floor;
         }
         else {
@@ -268,8 +359,8 @@ var filters = {
         return res;
     },
 
-    sort: function(arr, reverse, caseSens, attr) {
-        // Copy it
+    sort: r.makeMacro(['value', 'reverse', 'case_sensitive', 'attribute'], [], function(arr, reverse, caseSens, attr) {
+         // Copy it
         arr = lib.map(arr, function(v) { return v; });
 
         arr.sort(function(a, b) {
@@ -301,13 +392,32 @@ var filters = {
         });
 
         return arr;
-    },
+    }),
 
     string: function(obj) {
         return r.copySafeness(obj, obj);
     },
 
+    striptags: function(input, preserve_linebreaks) {
+        input = normalize(input, '');
+        preserve_linebreaks = preserve_linebreaks || false;
+        var tags = /<\/?([a-z][a-z0-9]*)\b[^>]*>|<!--[\s\S]*?-->/gi;
+        var trimmedInput = filters.trim(input.replace(tags, ''));
+        var res = '';
+        if (preserve_linebreaks) {
+            res = trimmedInput
+                .replace(/^ +| +$/gm, '')     // remove leading and trailing spaces
+                .replace(/ +/g, ' ')          // squash adjacent spaces
+                .replace(/(\r\n)/g, '\n')     // normalize linebreaks (CRLF -> LF)
+                .replace(/\n\n\n+/g, '\n\n'); // squash abnormal adjacent linebreaks
+        } else {
+            res = trimmedInput.replace(/\s+/gi, ' ');
+        }
+        return r.copySafeness(input, res);
+    },
+
     title: function(str) {
+        str = normalize(str, '');
         var words = str.split(' ');
         for(var i = 0; i < words.length; i++) {
             words[i] = filters.capitalize(words[i]);
@@ -321,6 +431,7 @@ var filters = {
 
     truncate: function(input, length, killwords, end) {
         var orig = input;
+        input = normalize(input, '');
         length = length || 255;
 
         if (input.length <= length)
@@ -342,6 +453,7 @@ var filters = {
     },
 
     upper: function(str) {
+        str = normalize(str, '');
         return str.toUpperCase();
     },
 
@@ -354,7 +466,7 @@ var filters = {
             if (lib.isArray(obj)) {
                 parts = obj.map(function(item) {
                     return enc(item[0]) + '=' + enc(item[1]);
-                })
+                });
             } else {
                 parts = [];
                 for (var k in obj) {
@@ -387,10 +499,7 @@ var filters = {
           return word && word.length;
         }).map(function(word) {
           var matches = word.match(puncRE);
-
-
           var possibleUrl = matches && matches[1] || word;
-
 
           // url that starts with http or https
           if (httpHttpsRE.test(possibleUrl))
@@ -416,6 +525,7 @@ var filters = {
     },
 
     wordcount: function(str) {
+        str = normalize(str, '');
         var words = (str) ? str.match(/\w+/g) : null;
         return (words) ? words.length : null;
     },

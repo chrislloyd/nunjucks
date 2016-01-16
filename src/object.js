@@ -1,3 +1,4 @@
+'use strict';
 
 // A simple class system, more documentation to come
 
@@ -7,6 +8,7 @@ function extend(cls, name, props) {
     F.prototype = cls.prototype;
     var prototype = new F();
 
+    // jshint undef: false
     var fnTest = /xyz/.test(function(){ xyz; }) ? /\bparent\b/ : /.*/;
     props = props || {};
 
@@ -14,9 +16,10 @@ function extend(cls, name, props) {
         var src = props[k];
         var parent = prototype[k];
 
-        if(typeof parent == "function" &&
-           typeof src == "function" &&
+        if(typeof parent === 'function' &&
+           typeof src === 'function' &&
            fnTest.test(src)) {
+            /*jshint -W083 */
             prototype[k] = (function (src, parent) {
                 return function() {
                     // Save the current parent method
@@ -48,9 +51,9 @@ function extend(cls, name, props) {
     new_cls.prototype.constructor = new_cls;
 
     new_cls.extend = function(name, props) {
-        if(typeof name == "object") {
+        if(typeof name === 'object') {
             props = name;
-            name = "anonymous";
+            name = 'anonymous';
         }
         return extend(new_cls, name, props);
     };
@@ -58,4 +61,4 @@ function extend(cls, name, props) {
     return new_cls;
 }
 
-module.exports = extend(Object, "Object", {});
+module.exports = extend(Object, 'Object', {});

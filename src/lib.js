@@ -1,12 +1,14 @@
+'use strict';
+
 var ArrayProto = Array.prototype;
 var ObjProto = Object.prototype;
 
 var escapeMap = {
     '&': '&amp;',
     '"': '&quot;',
-    "'": '&#39;',
-    "<": '&lt;',
-    ">": '&gt;'
+    '\'': '&#39;',
+    '<': '&lt;',
+    '>': '&gt;'
 };
 
 var escapeRegex = /[&"'<>]/g;
@@ -17,25 +19,23 @@ var lookupEscape = function(ch) {
 
 var exports = module.exports = {};
 
-exports.withPrettyErrors = function(path, withInternals, func) {
-    try {
-        return func();
-    } catch (e) {
-        if (!e.Update) {
-            // not one of ours, cast it
-            e = new exports.TemplateError(e);
-        }
-        e.Update(path);
-
-        // Unless they marked the dev flag, show them a trace from here
-        if (!withInternals) {
-            var old = e;
-            e = new Error(old.message);
-            e.name = old.name;
-        }
-
-        throw e;
+exports.prettifyError = function(path, withInternals, err) {
+    // jshint -W022
+    // http://jslinterrors.com/do-not-assign-to-the-exception-parameter
+    if (!err.Update) {
+        // not one of ours, cast it
+        err = new exports.TemplateError(err);
     }
+    err.Update(path);
+
+    // Unless they marked the dev flag, show them a trace from here
+    if (!withInternals) {
+        var old = err;
+        err = new Error(old.message);
+        err.name = old.name;
+    }
+
+    return err;
 };
 
 exports.TemplateError = function(message, lineno, colno) {
@@ -43,7 +43,16 @@ exports.TemplateError = function(message, lineno, colno) {
 
     if (message instanceof Error) { // for casting regular js errors
         err = message;
-        message = message.name + ": " + message.message;
+        message = message.name + ': ' + message.message;
+
+        try {
+            if(err.name = '') {}
+        }
+        catch(e) {
+            // If we can't set the name of the error object in this
+            // environment, don't use it
+            err = this;
+        }
     } else {
         if(Error.captureStackTrace) {
             Error.captureStackTrace(err);
@@ -57,7 +66,7 @@ exports.TemplateError = function(message, lineno, colno) {
     err.firstUpdate = true;
 
     err.Update = function(path) {
-        var message = "(" + (path || "unknown path") + ")";
+        var message = '(' + (path || 'unknown path') + ')';
 
         // only show lineno + colno next to path of template
         // where error occurred
@@ -90,19 +99,19 @@ exports.escape = function(val) {
 };
 
 exports.isFunction = function(obj) {
-    return ObjProto.toString.call(obj) == '[object Function]';
+    return ObjProto.toString.call(obj) === '[object Function]';
 };
 
 exports.isArray = Array.isArray || function(obj) {
-    return ObjProto.toString.call(obj) == '[object Array]';
+    return ObjProto.toString.call(obj) === '[object Array]';
 };
 
 exports.isString = function(obj) {
-    return ObjProto.toString.call(obj) == '[object String]';
+    return ObjProto.toString.call(obj) === '[object String]';
 };
 
 exports.isObject = function(obj) {
-    return ObjProto.toString.call(obj) == '[object Object]';
+    return ObjProto.toString.call(obj) === '[object Object]';
 };
 
 exports.groupBy = function(obj, val) {
@@ -157,7 +166,7 @@ exports.each = function(obj, func, context) {
         return;
     }
 
-    if(ArrayProto.each && obj.each == ArrayProto.each) {
+    if(ArrayProto.each && obj.each === ArrayProto.each) {
         obj.forEach(func, context);
     }
     else if(obj.length === +obj.length) {
@@ -257,7 +266,7 @@ exports.indexOf = Array.prototype.indexOf ?
 
 if(!Array.prototype.map) {
     Array.prototype.map = function() {
-        throw new Error("map is unimplemented for this js engine");
+        throw new Error('map is unimplemented for this js engine');
     };
 }
 
@@ -274,4 +283,4 @@ exports.keys = function(obj) {
         }
         return keys;
     }
-}
+};

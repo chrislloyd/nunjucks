@@ -1,3 +1,5 @@
+'use strict';
+
 var lib = require('./lib');
 var Obj = require('./object');
 
@@ -8,6 +10,7 @@ var Frame = Obj.extend({
     init: function(parent) {
         this.variables = {};
         this.parent = parent;
+        this.topLevel = false;
     },
 
     set: function(name, val, resolveUp) {
@@ -16,7 +19,7 @@ var Frame = Obj.extend({
         var parts = name.split('.');
         var obj = this.variables;
         var frame = this;
-        
+
         if(resolveUp) {
             if((frame = this.resolve(parts[0]))) {
                 frame.set(name, val);
@@ -57,7 +60,7 @@ var Frame = Obj.extend({
     resolve: function(name) {
         var p = this.parent;
         var val = this.variables[name];
-        if(val != null) {
+        if(val !== undefined && val !== null) {
             return this;
         }
         return p && p.resolve(name);
@@ -77,6 +80,7 @@ function makeMacro(argNames, kwargNames, func) {
         var argCount = numArgs(arguments);
         var args;
         var kwargs = getKeywordArgs(arguments);
+        var i;
 
         if(argCount > argNames.length) {
             args = Array.prototype.slice.call(arguments, 0, argNames.length);
@@ -84,7 +88,7 @@ function makeMacro(argNames, kwargNames, func) {
             // Positional arguments that should be passed in as
             // keyword arguments (essentially default values)
             var vals = Array.prototype.slice.call(arguments, args.length, argCount);
-            for(var i=0; i<vals.length; i++) {
+            for(i = 0; i < vals.length; i++) {
                 if(i < kwargNames.length) {
                     kwargs[kwargNames[i]] = vals[i];
                 }
@@ -95,7 +99,7 @@ function makeMacro(argNames, kwargNames, func) {
         else if(argCount < argNames.length) {
             args = Array.prototype.slice.call(arguments, 0, argCount);
 
-            for(var i=argCount; i<argNames.length; i++) {
+            for(i = argCount; i < argNames.length; i++) {
                 var arg = argNames[i];
 
                 // Keyword arguments that should be passed as
@@ -150,14 +154,17 @@ function numArgs(args) {
 // autoescaped. This happens magically because autoescaping only
 // occurs on primitive string objects.
 function SafeString(val) {
-    if(typeof val != 'string') {
+    if(typeof val !== 'string') {
         return val;
     }
 
     this.val = val;
+    this.length = val.length;
 }
 
-SafeString.prototype = Object.create(String.prototype);
+SafeString.prototype = Object.create(String.prototype, {
+    length: { writable: true, configurable: true, value: 0 }
+});
 SafeString.prototype.valueOf = function() {
     return this.val;
 };
@@ -195,12 +202,23 @@ function markSafe(val) {
 }
 
 function suppressValue(val, autoescape) {
-    val = (val !== undefined && val !== null) ? val : "";
+    val = (val !== undefined && val !== null) ? val : '';
 
-    if(autoescape && typeof val === "string") {
+    if(autoescape && typeof val === 'string') {
         val = lib.escape(val);
     }
 
+    return val;
+}
+
+function ensureDefined(val, lineno, colno) {
+    if(val === null || val === undefined) {
+        throw new lib.TemplateError(
+            'attempted to output null or undefined value',
+            lineno + 1,
+            colno + 1
+        );
+    }
     return val;
 }
 
@@ -216,7 +234,7 @@ function memberLookup(obj, val) {
     return obj[val];
 }
 
-function callWrap(obj, name, args) {
+function callWrap(obj, name, context, args) {
     if(!obj) {
         throw new Error('Unable to call `' + name + '`, which is undefined or falsey');
     }
@@ -224,7 +242,8 @@ function callWrap(obj, name, args) {
         throw new Error('Unable to call `' + name + '`, which is not a function');
     }
 
-    return obj.apply(this, args);
+    // jshint validthis: true
+    return obj.apply(context, args);
 }
 
 function contextOrFrameLookup(context, frame, name) {
@@ -267,14 +286,14 @@ function asyncEach(arr, dimen, iter, cb) {
 
 function asyncAll(arr, dimen, func, cb) {
     var finished = 0;
-    var len;
+    var len, i;
     var outputArr;
 
     function done(i, output) {
         finished++;
         outputArr[i] = output;
 
-        if(finished == len) {
+        if(finished === len) {
             cb(null, outputArr.join(''));
         }
     }
@@ -283,11 +302,11 @@ function asyncAll(arr, dimen, func, cb) {
         len = arr.length;
         outputArr = new Array(len);
 
-        if(len == 0) {
+        if(len === 0) {
             cb(null, '');
         }
         else {
-            for(var i=0; i<arr.length; i++) {
+            for(i = 0; i < arr.length; i++) {
                 var item = arr[i];
 
                 switch(dimen) {
@@ -296,6 +315,7 @@ function asyncAll(arr, dimen, func, cb) {
                 case 3: func(item[0], item[1], item[2], i, len, done); break;
                 default:
                     item.push(i, done);
+                    // jshint validthis: true
                     func.apply(this, item);
                 }
             }
@@ -306,11 +326,11 @@ function asyncAll(arr, dimen, func, cb) {
         len = keys.length;
         outputArr = new Array(len);
 
-        if(len == 0) {
+        if(len === 0) {
             cb(null, '');
         }
         else {
-            for(var i=0; i<keys.length; i++) {
+            for(i = 0; i < keys.length; i++) {
                 var k = keys[i];
                 func(k, arr[k], i, len, done);
             }
@@ -324,6 +344,7 @@ module.exports = {
     makeKeywordArgs: makeKeywordArgs,
     numArgs: numArgs,
     suppressValue: suppressValue,
+    ensureDefined: ensureDefined,
     memberLookup: memberLookup,
     contextOrFrameLookup: contextOrFrameLookup,
     callWrap: callWrap,

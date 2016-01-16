@@ -1,7 +1,9 @@
 (function() {
+    'use strict';
+
     var expect, util;
 
-    if(typeof require != 'undefined') {
+    if(typeof require !== 'undefined') {
         expect = require('expect.js');
         util = require('./util');
     }
@@ -10,7 +12,6 @@
         util = window.util;
     }
 
-    var equal = util.equal;
     var finish = util.finish;
     var render = util.render;
 
@@ -57,7 +58,7 @@
         it('should allow for undefined macro arguments in the last position', function(done) {
             render('{% macro foo(bar, baz) %}' +
                    '{{ bar }} {{ baz }}{% endmacro %}' +
-                   '{{ foo("hello", none) }}',
+                   '{{ foo("hello", nosuchvar) }}',
                    {},
                    { noThrow: true },
                    function(err, res) {

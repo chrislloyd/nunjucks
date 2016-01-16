@@ -1,7 +1,10 @@
+'use strict';
+
 var lib = require('./lib');
 var parser = require('./parser');
 var transformer = require('./transformer');
 var nodes = require('./nodes');
+// jshint -W079
 var Object = require('./object');
 var Frame = require('./runtime').Frame;
 
@@ -25,21 +28,16 @@ function binOpEmitter(str) {
     };
 }
 
-// Generate an array of strings
-function quotedArray(arr) {
-    return '[' +
-        lib.map(arr, function(x) { return '"' + x + '"'; }) +
-        ']';
-}
-
 var Compiler = Object.extend({
-    init: function() {
+    init: function(templateName, throwOnUndefined) {
+        this.templateName = templateName;
         this.codebuf = [];
         this.lastId = 0;
         this.buffer = null;
         this.bufferStack = [];
-        this.isChild = false;
         this.scopeClosers = '';
+        this.inBlock = false;
+        this.throwOnUndefined = throwOnUndefined;
     },
 
     fail: function (msg, lineno, colno) {
@@ -64,7 +62,7 @@ var Compiler = Object.extend({
     },
 
     emitLine: function(code) {
-        this.emit(code + "\n");
+        this.emit(code + '\n');
     },
 
     emitLines: function() {
@@ -127,10 +125,8 @@ var Compiler = Object.extend({
         return 't_' + this.lastId;
     },
 
-    _bufferAppend: function(func) {
-        this.emit(this.buffer + ' += runtime.suppressValue(');
-        func.call(this);
-        this.emit(', env.autoesc);\n');
+    _templateName: function() {
+        return this.templateName == null? 'undefined' : JSON.stringify(this.templateName);
     },
 
     _compileChildren: function(node, frame) {
@@ -179,6 +175,7 @@ var Compiler = Object.extend({
             nodes.Or,
             nodes.Not,
             nodes.Add,
+            nodes.Concat,
             nodes.Sub,
             nodes.Mul,
             nodes.Div,
@@ -204,18 +201,16 @@ var Compiler = Object.extend({
         }
 
         if(!success) {
-            this.fail("assertType: invalid type: " + node.typename,
+            this.fail('assertType: invalid type: ' + node.typename,
                       node.lineno,
                       node.colno);
         }
     },
 
     compileCallExtension: function(node, frame, async) {
-        var name = node.extName;
         var args = node.args;
         var contentArgs = node.contentArgs;
         var autoescape = typeof node.autoescape === 'boolean' ? node.autoescape : true;
-        var transformedArgs = [];
 
         if(!async) {
             this.emit(this.buffer + ' += runtime.suppressValue(');
@@ -240,7 +235,7 @@ var Compiler = Object.extend({
                 // object as the last argument, if they exist.
                 this._compileExpression(arg, frame);
 
-                if(i != args.children.length - 1 || contentArgs.length) {
+                if(i !== args.children.length - 1 || contentArgs.length) {
                     this.emit(',');
                 }
             }, this);
@@ -277,12 +272,12 @@ var Compiler = Object.extend({
         if(async) {
             var res = this.tmpid();
             this.emitLine(', ' + this.makeCallback(res));
-            this.emitLine(this.buffer + ' += runtime.suppressValue(' + res + ', ' + autoescape + ' && env.autoesc);');
+            this.emitLine(this.buffer + ' += runtime.suppressValue(' + res + ', ' + autoescape + ' && env.opts.autoescape);');
             this.addScopeLevel();
         }
         else {
             this.emit(')');
-            this.emit(', ' + autoescape + ' && env.autoesc);\n');
+            this.emit(', ' + autoescape + ' && env.opts.autoescape);\n');
         }
     },
 
@@ -294,14 +289,17 @@ var Compiler = Object.extend({
         this._compileChildren(node, frame);
     },
 
-    compileLiteral: function(node, frame) {
-        if(typeof node.value == "string") {
+    compileLiteral: function(node) {
+        if(typeof node.value === 'string') {
             var val = node.value.replace(/\\/g, '\\\\');
             val = val.replace(/"/g, '\\"');
-            val = val.replace(/\n/g, "\\n");
-            val = val.replace(/\r/g, "\\r");
-            val = val.replace(/\t/g, "\\t");
+            val = val.replace(/\n/g, '\\n');
+            val = val.replace(/\r/g, '\\r');
+            val = val.replace(/\t/g, '\\t');
             this.emit('"' + val  + '"');
+        }
+        else if (node.value === null) {
+            this.emit('null');
         }
         else {
             this.emit(node.value.toString());
@@ -341,8 +339,8 @@ var Compiler = Object.extend({
             key = new nodes.Literal(key.lineno, key.colno, key.value);
         }
         else if(!(key instanceof nodes.Literal &&
-                  typeof key.value == "string")) {
-            this.fail("compilePair: Dict keys must be strings or names",
+                  typeof key.value === 'string')) {
+            this.fail('compilePair: Dict keys must be strings or names',
                       key.lineno,
                       key.colno);
         }
@@ -376,6 +374,9 @@ var Compiler = Object.extend({
     compileOr: binOpEmitter(' || '),
     compileAnd: binOpEmitter(' && '),
     compileAdd: binOpEmitter(' + '),
+    // ensure concatenation instead of addition
+    // by adding empty string in between
+    compileConcat: binOpEmitter(' + "" + '),
     compileSub: binOpEmitter(' - '),
     compileMul: binOpEmitter(' * '),
     compileDiv: binOpEmitter(' / '),
@@ -427,7 +428,7 @@ var Compiler = Object.extend({
         this._compileExpression(node.target, frame);
         this.emit('),');
         this._compileExpression(node.val, frame);
-        this.emit(', env.autoesc)');
+        this.emit(')');
     },
 
     _getNodeName: function(node) {
@@ -460,7 +461,7 @@ var Compiler = Object.extend({
 
         // Output the name of what we're calling so we can get friendly errors
         // if the lookup fails.
-        this.emit(', "' + this._getNodeName(node.name).replace(/"/g, '\\"') + '", ');
+        this.emit(', "' + this._getNodeName(node.name).replace(/"/g, '\\"') + '", context, ');
 
         this._compileAggregate(node.args, frame, '[', '])');
 
@@ -511,7 +512,7 @@ var Compiler = Object.extend({
             var name = target.value;
             var id = frame.lookup(name);
 
-            if (id == null) {
+            if (id === null || id === undefined) {
                 id = this.tmpid();
 
                 // Note: This relies on js allowing scope across
@@ -530,21 +531,27 @@ var Compiler = Object.extend({
             var id = ids[i];
             var name = target.value;
 
-            this.emitLine('frame.set("' + name + '", ' + id + ', true);');
-
             // We are running this for every var, but it's very
             // uncommon to assign to multiple vars anyway
-            
+            this.emitLine('frame.set("' + name + '", ' + id + ', true);');
+
             // BEGIN CUSTOMIZATION: Export normal variables - not just macros.  This matches Jinja.
-            //this.emitLine('if(!frame.parent) {');
+            // this.emitLine('if(frame.topLevel) {');
             // END CUSTOMIZATION
             this.emitLine('context.setVariable("' + name + '", ' + id + ');');
-            if(name.charAt(0) != '_') {
-                this.emitLine('context.addExport("' + name + '");');
-            }
             // BEGIN CUSTOMIZATION
-            //this.emitLine('}');
+            // this.emitLine('}');
             // END CUSTOMIZATION
+
+            if(name.charAt(0) !== '_') {
+                // BEGIN CUSTOMIZATION
+                // this.emitLine('if(frame.topLevel) {');
+                // END CUSTOMIZATION
+                this.emitLine('context.addExport("' + name + '", ' + id + ');');
+                // BEGIN CUSTOMIZATION
+                // this.emitLine('}');
+                // END CUSTOMIZATION
+            }
         }, this);
     },
 
@@ -607,6 +614,7 @@ var Compiler = Object.extend({
         // as fast as possible. ForAsync also shares some of this, but
         // not much.
 
+        var v;
         var i = this.tmpid();
         var len = this.tmpid();
         var arr = this.tmpid();
@@ -654,7 +662,7 @@ var Compiler = Object.extend({
                 var key = node.name.children[0];
                 var val = node.name.children[1];
                 var k = this.tmpid();
-                var v = this.tmpid();
+                v = this.tmpid();
                 frame.set(key.value, k);
                 frame.set(val.value, v);
 
@@ -677,7 +685,7 @@ var Compiler = Object.extend({
         }
         else {
             // Generate a typical array iteration
-            var v = this.tmpid();
+            v = this.tmpid();
             frame.set(node.name.value, v);
 
             this.emitLine('var ' + len + ' = ' + arr + '.length;');
@@ -876,7 +884,7 @@ var Compiler = Object.extend({
             this.emitLine('frame.set("' + name + '", ' + funcId + ');');
         }
         else {
-            if(node.name.value.charAt(0) != '_') {
+            if(node.name.value.charAt(0) !== '_') {
                 this.emitLine('context.addExport("' + name + '");');
             }
             this.emitLine('context.setVariable("' + name + '", ' + funcId + ');');
@@ -896,11 +904,11 @@ var Compiler = Object.extend({
 
         this.emit('env.getTemplate(');
         this._compileExpression(node.template, frame);
-        this.emitLine(', ' + this.makeCallback(id));
+        this.emitLine(', false, '+this._templateName()+', false, ' + this.makeCallback(id));
         this.addScopeLevel();
 
         this.emitLine(id + '.getExported(' +
-            (node.withContext ? 'context.getVariables(), frame.push(), ' : '') +
+            (node.withContext ? 'context.getVariables(), frame, ' : '') +
             this.makeCallback(id));
         this.addScopeLevel();
 
@@ -919,11 +927,11 @@ var Compiler = Object.extend({
 
         this.emit('env.getTemplate(');
         this._compileExpression(node.template, frame);
-        this.emitLine(', ' + this.makeCallback(importedId));
+        this.emitLine(', false, '+this._templateName()+', false, ' + this.makeCallback(importedId));
         this.addScopeLevel();
 
         this.emitLine(importedId + '.getExported(' +
-            (node.withContext ? 'context.getVariables(), frame.push(), ' : '') +
+            (node.withContext ? 'context.getVariables(), frame, ' : '') +
             this.makeCallback(importedId));
         this.addScopeLevel();
 
@@ -958,15 +966,29 @@ var Compiler = Object.extend({
         }, this);
     },
 
-    compileBlock: function(node, frame) {
-        if(!this.isChild) {
-            var id = this.tmpid();
+    compileBlock: function(node) {
+        var id = this.tmpid();
 
-            this.emitLine('context.getBlock("' + node.name.value + '")' +
-                          '(env, context, frame, runtime, ' + this.makeCallback(id));
-            this.emitLine(this.buffer + ' += ' + id + ';');
-            this.addScopeLevel();
+        // If we are executing outside a block (creating a top-level
+        // block), we really don't want to execute its code because it
+        // will execute twice: once when the child template runs and
+        // again when the parent template runs. Note that blocks
+        // within blocks will *always* execute immediately *and*
+        // wherever else they are invoked (like used in a parent
+        // template). This may have behavioral differences from jinja
+        // because blocks can have side effects, but it seems like a
+        // waste of performance to always execute huge top-level
+        // blocks twice
+        if(!this.inBlock) {
+            this.emit('(parentTemplate ? function(e, c, f, r, cb) { cb(""); } : ');
         }
+        this.emit('context.getBlock("' + node.name.value + '")');
+        if(!this.inBlock) {
+            this.emit(')');
+        }
+        this.emitLine('(env, context, frame, runtime, ' + this.makeCallback(id));
+        this.emitLine(this.buffer + ' += ' + id + ';');
+        this.addScopeLevel();
     },
 
     compileSuper: function(node, frame) {
@@ -984,17 +1006,16 @@ var Compiler = Object.extend({
     },
 
     compileExtends: function(node, frame) {
-        if(this.isChild) {
-            this.fail('compileExtends: cannot extend multiple times',
-                      node.template.lineno,
-                      node.template.colno);
-        }
-
         var k = this.tmpid();
 
         this.emit('env.getTemplate(');
         this._compileExpression(node.template, frame);
-        this.emitLine(', true, ' + this.makeCallback('parentTemplate'));
+        this.emitLine(', true, '+this._templateName()+', false, ' + this.makeCallback('_parentTemplate'));
+
+        // extends is a dynamic tag and can occur within a block like
+        // `if`, so if this happens we need to capture the parent
+        // template in the top-level scope
+        this.emitLine('parentTemplate = _parentTemplate');
 
         this.emitLine('for(var ' + k + ' in parentTemplate.blocks) {');
         this.emitLine('context.addBlock(' + k +
@@ -1002,7 +1023,6 @@ var Compiler = Object.extend({
         this.emitLine('}');
 
         this.addScopeLevel();
-        this.isChild = true;
     },
 
     compileInclude: function(node, frame) {
@@ -1011,11 +1031,11 @@ var Compiler = Object.extend({
 
         this.emit('env.getTemplate(');
         this._compileExpression(node.template, frame);
-        this.emitLine(', ' + this.makeCallback(id));
+        this.emitLine(', false, '+this._templateName()+', ' + node.ignoreMissing + ', ' + this.makeCallback(id));
         this.addScopeLevel();
 
         this.emitLine(id + '.render(' +
-                      'context.getVariables(), frame.push(), ' + this.makeCallback(id2));
+                      'context.getVariables(), frame, ' + this.makeCallback(id2));
         this.emitLine(this.buffer + ' += ' + id2);
         this.addScopeLevel();
     },
@@ -1038,33 +1058,41 @@ var Compiler = Object.extend({
             }
             else {
                 this.emit(this.buffer + ' += runtime.suppressValue(');
+                if(this.throwOnUndefined) {
+                    this.emit('runtime.ensureDefined(');
+                }
                 this.compile(children[i], frame);
-                this.emit(', env.autoesc);\n');
+                if(this.throwOnUndefined) {
+                    this.emit(',' + node.lineno + ',' + node.colno + ')');
+                }
+                this.emit(', env.opts.autoescape);\n');
             }
         }
     },
 
     compileRoot: function(node, frame) {
         if(frame) {
-            this.fail("compileRoot: root node can't have frame");
+            this.fail('compileRoot: root node can\'t have frame');
         }
 
         frame = new Frame();
 
         this.emitFuncBegin('root');
+        this.emitLine('var parentTemplate = null;');
         this._compileChildren(node, frame);
-        if(this.isChild) {
-            this.emitLine('parentTemplate.rootRenderFunc(env, context, frame, runtime, cb);');
-        }
-        this.emitFuncEnd(this.isChild);
+        this.emitLine('if(parentTemplate) {');
+        this.emitLine('parentTemplate.rootRenderFunc(env, context, frame, runtime, cb);');
+        this.emitLine('} else {');
+        this.emitLine('cb(null, ' + this.buffer +');');
+        this.emitLine('}');
+        this.emitFuncEnd(true);
 
-        // When compiling the blocks, they should all act as top-level code
-        this.isChild = false;
+        this.inBlock = true;
 
-        var blocks = node.findAll(nodes.Block);
-        for(var i=0; i<blocks.length; i++) {
-            var block = blocks[i];
-            var name = block.name.value;
+        var i, name, block, blocks = node.findAll(nodes.Block);
+        for (i = 0; i < blocks.length; i++) {
+            block = blocks[i];
+            name = block.name.value;
 
             this.emitFuncBegin('b_' + name);
 
@@ -1074,21 +1102,21 @@ var Compiler = Object.extend({
         }
 
         this.emitLine('return {');
-        for(var i=0; i<blocks.length; i++) {
-            var block = blocks[i];
-            var name = 'b_' + block.name.value;
+        for (i = 0; i < blocks.length; i++) {
+            block = blocks[i];
+            name = 'b_' + block.name.value;
             this.emitLine(name + ': ' + name + ',');
         }
         this.emitLine('root: root\n};');
     },
 
     compile: function (node, frame) {
-        var _compile = this["compile" + node.typename];
+        var _compile = this['compile' + node.typename];
         if(_compile) {
             _compile.call(this, node, frame);
         }
         else {
-            this.fail("compile: Cannot compile node: " + node.typename,
+            this.fail('compile: Cannot compile node: ' + node.typename,
                       node.lineno,
                       node.colno);
         }
@@ -1100,7 +1128,9 @@ var Compiler = Object.extend({
 });
 
 // var c = new Compiler();
-// var src = '{% asyncEach i in arr %}{{ i }}{% else %}empty{% endeach %}';
+// var src = 'hello {% filter title %}' +
+//     'Hello madam how are you' +
+//     '{% endfilter %}'
 // var ast = transformer.transform(parser.parse(src));
 // nodes.printNodes(ast);
 // c.compile(ast);
@@ -1108,8 +1138,8 @@ var Compiler = Object.extend({
 // console.log(tmpl);
 
 module.exports = {
-    compile: function(src, asyncFilters, extensions, name, lexerTags) {
-        var c = new Compiler();
+    compile: function(src, asyncFilters, extensions, name, opts) {
+        var c = new Compiler(name, opts.throwOnUndefined);
 
         // Run the extension preprocessors against the source.
         if(extensions && extensions.length) {
@@ -1120,9 +1150,13 @@ module.exports = {
             }
         }
 
-        c.compile(transformer.transform(parser.parse(src, extensions, lexerTags),
-                                        asyncFilters,
-                                        name));
+        c.compile(transformer.transform(
+            parser.parse(src,
+                         extensions,
+                         opts),
+            asyncFilters,
+            name
+        ));
         return c.getCode();
     },
 

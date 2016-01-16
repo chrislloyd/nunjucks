@@ -1,40 +1,44 @@
+'use strict';
+
 var lib = require('./lib');
 
-var whitespaceChars = " \n\t\r\u00A0";
-var delimChars = "()[]{}%*-+/#,:|.<>=!";
-var intChars = "0123456789";
+var whitespaceChars = ' \n\t\r\u00A0';
+var delimChars = '()[]{}%*-+~/#,:|.<>=!';
+var intChars = '0123456789';
 
-var BLOCK_START = "{%";
-var BLOCK_END = "%}";
-var VARIABLE_START = "{{";
-var VARIABLE_END = "}}";
-var COMMENT_START = "{#";
-var COMMENT_END = "#}";
+var BLOCK_START = '{%';
+var BLOCK_END = '%}';
+var VARIABLE_START = '{{';
+var VARIABLE_END = '}}';
+var COMMENT_START = '{#';
+var COMMENT_END = '#}';
 
-var TOKEN_STRING = "string";
-var TOKEN_WHITESPACE = "whitespace";
-var TOKEN_DATA = "data";
-var TOKEN_BLOCK_START = "block-start";
-var TOKEN_BLOCK_END = "block-end";
-var TOKEN_VARIABLE_START = "variable-start";
-var TOKEN_VARIABLE_END = "variable-end";
-var TOKEN_COMMENT = "comment";
-var TOKEN_LEFT_PAREN = "left-paren";
-var TOKEN_RIGHT_PAREN = "right-paren";
-var TOKEN_LEFT_BRACKET = "left-bracket";
-var TOKEN_RIGHT_BRACKET = "right-bracket";
-var TOKEN_LEFT_CURLY = "left-curly";
-var TOKEN_RIGHT_CURLY = "right-curly";
-var TOKEN_OPERATOR = "operator";
-var TOKEN_COMMA = "comma";
-var TOKEN_COLON = "colon";
-var TOKEN_PIPE = "pipe";
-var TOKEN_INT = "int";
-var TOKEN_FLOAT = "float";
-var TOKEN_BOOLEAN = "boolean";
-var TOKEN_SYMBOL = "symbol";
-var TOKEN_SPECIAL = "special";
-var TOKEN_REGEX = "regex";
+var TOKEN_STRING = 'string';
+var TOKEN_WHITESPACE = 'whitespace';
+var TOKEN_DATA = 'data';
+var TOKEN_BLOCK_START = 'block-start';
+var TOKEN_BLOCK_END = 'block-end';
+var TOKEN_VARIABLE_START = 'variable-start';
+var TOKEN_VARIABLE_END = 'variable-end';
+var TOKEN_COMMENT = 'comment';
+var TOKEN_LEFT_PAREN = 'left-paren';
+var TOKEN_RIGHT_PAREN = 'right-paren';
+var TOKEN_LEFT_BRACKET = 'left-bracket';
+var TOKEN_RIGHT_BRACKET = 'right-bracket';
+var TOKEN_LEFT_CURLY = 'left-curly';
+var TOKEN_RIGHT_CURLY = 'right-curly';
+var TOKEN_OPERATOR = 'operator';
+var TOKEN_COMMA = 'comma';
+var TOKEN_COLON = 'colon';
+var TOKEN_TILDE = 'tilde';
+var TOKEN_PIPE = 'pipe';
+var TOKEN_INT = 'int';
+var TOKEN_FLOAT = 'float';
+var TOKEN_BOOLEAN = 'boolean';
+var TOKEN_NONE = 'none';
+var TOKEN_SYMBOL = 'symbol';
+var TOKEN_SPECIAL = 'special';
+var TOKEN_REGEX = 'regex';
 
 function token(type, value, lineno, colno) {
     return {
@@ -45,7 +49,7 @@ function token(type, value, lineno, colno) {
     };
 }
 
-function Tokenizer(str, tags) {
+function Tokenizer(str, opts) {
     this.str = str;
     this.index = 0;
     this.len = str.length;
@@ -54,7 +58,9 @@ function Tokenizer(str, tags) {
 
     this.in_code = false;
 
-    tags = tags || {};
+    opts = opts || {};
+
+    var tags = opts.tags || {};
     this.tags = {
         BLOCK_START: tags.blockStart || BLOCK_START,
         BLOCK_END: tags.blockEnd || BLOCK_END,
@@ -63,22 +69,25 @@ function Tokenizer(str, tags) {
         COMMENT_START: tags.commentStart || COMMENT_START,
         COMMENT_END: tags.commentEnd || COMMENT_END
     };
+
+    this.trimBlocks = !!opts.trimBlocks;
+    this.lstripBlocks = !!opts.lstripBlocks;
 }
 
 Tokenizer.prototype.nextToken = function() {
     var lineno = this.lineno;
     var colno = this.colno;
+    var tok;
 
     if(this.in_code) {
         // Otherwise, if we are in a block parse it as code
         var cur = this.current();
-        var tok;
 
         if(this.is_finished()) {
             // We have nothing else to parse
             return null;
         }
-        else if(cur == "\"" || cur == "'") {
+        else if(cur === '"' || cur === '\'') {
             // We've hit a string
             return token(TOKEN_STRING, this.parseString(cur), lineno, colno);
         }
@@ -95,6 +104,23 @@ Tokenizer.prototype.nextToken = function() {
             // breaks on delimiters so we can assume the token parsing
             // doesn't consume these elsewhere
             this.in_code = false;
+            if(this.trimBlocks) {
+                cur = this.current();
+                if(cur === '\n') {
+                    // Skip newline
+                    this.forward();
+                }else if(cur === '\r'){
+                    // Skip CRLF newline
+                    this.forward();
+                    cur = this.current();
+                    if(cur === '\n'){
+                        this.forward();
+                    }else{
+                        // Was not a CRLF, so go back
+                        this.back();
+                    }
+                }
+            }
             return token(TOKEN_BLOCK_END, tok, lineno, colno);
         }
         else if((tok = this._extractString(this.tags.VARIABLE_END))) {
@@ -134,7 +160,7 @@ Tokenizer.prototype.nextToken = function() {
 
             return token(TOKEN_REGEX, {body: regexBody, flags: regexFlags}, lineno, colno);
         }
-        else if(delimChars.indexOf(cur) != -1) {
+        else if(delimChars.indexOf(cur) !== -1) {
             // We've hit a delimiter (a special char like a bracket)
             this.forward();
             var complexOps = ['==', '!=', '<=', '>=', '//', '**'];
@@ -147,15 +173,16 @@ Tokenizer.prototype.nextToken = function() {
             }
 
             switch(cur) {
-            case "(": type = TOKEN_LEFT_PAREN; break;
-            case ")": type = TOKEN_RIGHT_PAREN; break;
-            case "[": type = TOKEN_LEFT_BRACKET; break;
-            case "]": type = TOKEN_RIGHT_BRACKET; break;
-            case "{": type = TOKEN_LEFT_CURLY; break;
-            case "}": type = TOKEN_RIGHT_CURLY; break;
-            case ",": type = TOKEN_COMMA; break;
-            case ":": type = TOKEN_COLON; break;
-            case "|": type = TOKEN_PIPE; break;
+            case '(': type = TOKEN_LEFT_PAREN; break;
+            case ')': type = TOKEN_RIGHT_PAREN; break;
+            case '[': type = TOKEN_LEFT_BRACKET; break;
+            case ']': type = TOKEN_RIGHT_BRACKET; break;
+            case '{': type = TOKEN_LEFT_CURLY; break;
+            case '}': type = TOKEN_RIGHT_CURLY; break;
+            case ',': type = TOKEN_COMMA; break;
+            case ':': type = TOKEN_COLON; break;
+            case '~': type = TOKEN_TILDE; break;
+            case '|': type = TOKEN_PIPE; break;
             default: type = TOKEN_OPERATOR;
             }
 
@@ -167,7 +194,7 @@ Tokenizer.prototype.nextToken = function() {
             tok = this._extractUntil(whitespaceChars + delimChars);
 
             if(tok.match(/^[-+]?[0-9]+$/)) {
-                if(this.current() == '.') {
+                if(this.current() === '.') {
                     this.forward();
                     var dec = this._extract(intChars);
                     return token(TOKEN_FLOAT, tok + '.' + dec, lineno, colno);
@@ -179,11 +206,14 @@ Tokenizer.prototype.nextToken = function() {
             else if(tok.match(/^(true|false)$/)) {
                 return token(TOKEN_BOOLEAN, tok, lineno, colno);
             }
+            else if(tok === 'none') {
+                return token(TOKEN_NONE, tok, lineno, colno);
+            }
             else if(tok) {
                 return token(TOKEN_SYMBOL, tok, lineno, colno);
             }
             else {
-                throw new Error("Unexpected value while parsing: " + tok);
+                throw new Error('Unexpected value while parsing: ' + tok);
             }
         }
     }
@@ -195,7 +225,6 @@ Tokenizer.prototype.nextToken = function() {
                           this.tags.VARIABLE_START.charAt(0) +
                           this.tags.COMMENT_START.charAt(0) +
                           this.tags.COMMENT_END.charAt(0));
-        var tok;
 
         if(this.is_finished()) {
             return null;
@@ -232,12 +261,27 @@ Tokenizer.prototype.nextToken = function() {
                     this._matches(this.tags.VARIABLE_START) ||
                     this._matches(this.tags.COMMENT_START)) &&
                   !in_comment) {
+                    if(this.lstripBlocks &&
+                        this._matches(this.tags.BLOCK_START) &&
+                        this.colno > 0 &&
+                        this.colno <= tok.length) {
+                        var lastLine = tok.slice(-this.colno);
+                        if(/^\s+$/.test(lastLine)) {
+                            // Remove block leading whitespace from beginning of the string
+                            tok = tok.slice(0, -this.colno);
+                            if(!tok.length) {
+                                // All data removed, collapse to avoid unnecessary nodes
+                                // by returning next token (block start)
+                                return this.nextToken();
+                            }
+                        }
+                    }
                     // If it is a start tag, stop looping
                     break;
                 }
                 else if(this._matches(this.tags.COMMENT_END)) {
                     if(!in_comment) {
-                        throw new Error("unexpected end of comment");
+                        throw new Error('unexpected end of comment');
                     }
                     tok += this._extractString(this.tags.COMMENT_END);
                     break;
@@ -251,7 +295,7 @@ Tokenizer.prototype.nextToken = function() {
             }
 
             if(data === null && in_comment) {
-                throw new Error("expected end of comment, got end of file");
+                throw new Error('expected end of comment, got end of file');
             }
 
             return token(in_comment ? TOKEN_COMMENT : TOKEN_DATA,
@@ -261,25 +305,23 @@ Tokenizer.prototype.nextToken = function() {
         }
     }
 
-    throw new Error("Could not parse text");
+    throw new Error('Could not parse text');
 };
 
 Tokenizer.prototype.parseString = function(delimiter) {
     this.forward();
 
-    var lineno = this.lineno;
-    var colno = this.colno;
-    var str = "";
+    var str = '';
 
-    while(!this.is_finished() && this.current() != delimiter) {
+    while(!this.is_finished() && this.current() !== delimiter) {
         var cur = this.current();
 
-        if(cur == "\\") {
+        if(cur === '\\') {
             this.forward();
             switch(this.current()) {
-            case "n": str += "\n"; break;
-            case "t": str += "\t"; break;
-            case "r": str += "\r"; break;
+            case 'n': str += '\n'; break;
+            case 't': str += '\t'; break;
+            case 'r': str += '\r'; break;
             default:
                 str += this.current();
             }
@@ -301,7 +343,7 @@ Tokenizer.prototype._matches = function(str) {
     }
 
     var m = this.str.slice(this.index, this.index + str.length);
-    return m == str;
+    return m === str;
 };
 
 Tokenizer.prototype._extractString = function(str) {
@@ -315,7 +357,7 @@ Tokenizer.prototype._extractString = function(str) {
 Tokenizer.prototype._extractUntil = function(charString) {
     // Extract all non-matching chars, with the default matching set
     // to everything
-    return this._extractMatching(true, charString || "");
+    return this._extractMatching(true, charString || '');
 };
 
 Tokenizer.prototype._extract = function(charString) {
@@ -336,8 +378,8 @@ Tokenizer.prototype._extractMatching = function (breakOnMatch, charString) {
     var first = charString.indexOf(this.current());
 
     // Only proceed if the first character doesn't meet our condition
-    if((breakOnMatch && first == -1) ||
-       (!breakOnMatch && first != -1)) {
+    if((breakOnMatch && first === -1) ||
+       (!breakOnMatch && first !== -1)) {
         var t = this.current();
         this.forward();
 
@@ -345,8 +387,8 @@ Tokenizer.prototype._extractMatching = function (breakOnMatch, charString) {
         // breaking char
         var idx = charString.indexOf(this.current());
 
-        while(((breakOnMatch && idx == -1) ||
-               (!breakOnMatch && idx != -1)) && !this.is_finished()) {
+        while(((breakOnMatch && idx === -1) ||
+               (!breakOnMatch && idx !== -1)) && !this.is_finished()) {
             t += this.current();
             this.forward();
 
@@ -356,7 +398,19 @@ Tokenizer.prototype._extractMatching = function (breakOnMatch, charString) {
         return t;
     }
 
-    return "";
+    return '';
+};
+
+Tokenizer.prototype._extractRegex = function(regex) {
+    var matches = this.currentStr().match(regex);
+    if(!matches) {
+        return null;
+    }
+
+    // Move forward whatever was matched
+    this.forwardN(matches[0].length);
+
+    return matches;
 };
 
 Tokenizer.prototype.is_finished = function() {
@@ -372,7 +426,7 @@ Tokenizer.prototype.forwardN = function(n) {
 Tokenizer.prototype.forward = function() {
     this.index++;
 
-    if(this.previous() == "\n") {
+    if(this.previous() === '\n') {
         this.lineno++;
         this.colno = 0;
     }
@@ -381,14 +435,20 @@ Tokenizer.prototype.forward = function() {
     }
 };
 
+Tokenizer.prototype.backN = function(n) {
+    for(var i=0; i<n; i++) {
+        this.back();
+    }
+};
+
 Tokenizer.prototype.back = function() {
     this.index--;
 
-    if(this.current() == "\n") {
+    if(this.current() === '\n') {
         this.lineno--;
 
-        var idx = this.src.lastIndexOf("\n", this.index-1);
-        if(idx == -1) {
+        var idx = this.src.lastIndexOf('\n', this.index-1);
+        if(idx === -1) {
             this.colno = this.index;
         }
         else {
@@ -400,11 +460,20 @@ Tokenizer.prototype.back = function() {
     }
 };
 
+// current returns current character
 Tokenizer.prototype.current = function() {
     if(!this.is_finished()) {
         return this.str.charAt(this.index);
     }
-    return "";
+    return '';
+};
+
+// currentStr returns what's left of the unparsed string
+Tokenizer.prototype.currentStr = function() {
+    if(!this.is_finished()) {
+        return this.str.substr(this.index);
+    }
+    return '';
 };
 
 Tokenizer.prototype.previous = function() {
@@ -412,8 +481,8 @@ Tokenizer.prototype.previous = function() {
 };
 
 module.exports = {
-    lex: function(src, tags) {
-        return new Tokenizer(src, tags);
+    lex: function(src, opts) {
+        return new Tokenizer(src, opts);
     },
 
     TOKEN_STRING: TOKEN_STRING,
@@ -433,10 +502,12 @@ module.exports = {
     TOKEN_OPERATOR: TOKEN_OPERATOR,
     TOKEN_COMMA: TOKEN_COMMA,
     TOKEN_COLON: TOKEN_COLON,
+    TOKEN_TILDE: TOKEN_TILDE,
     TOKEN_PIPE: TOKEN_PIPE,
     TOKEN_INT: TOKEN_INT,
     TOKEN_FLOAT: TOKEN_FLOAT,
     TOKEN_BOOLEAN: TOKEN_BOOLEAN,
+    TOKEN_NONE: TOKEN_NONE,
     TOKEN_SYMBOL: TOKEN_SYMBOL,
     TOKEN_SPECIAL: TOKEN_SPECIAL,
     TOKEN_REGEX: TOKEN_REGEX
