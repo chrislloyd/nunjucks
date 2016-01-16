@@ -1,5 +1,5 @@
 {
-  "name": "nunjucks-pinterest",
+  "name": "nunjucks",
   "description": "A powerful templating engine with inheritance, asynchronous control, and more (jinja2 inspired). This fork includes customizations to make nunjucks behave more like jinja.",
   "version": "2.3.0-pinterest",
   "author": {
