@@ -1937,14 +1937,22 @@ var nunjucks =
 	            // uncommon to assign to multiple vars anyway
 	            this.emitLine('frame.set("' + name + '", ' + id + ', true);');
 
-	            this.emitLine('if(frame.topLevel) {');
+	            // BEGIN CUSTOMIZATION: Export normal variables - not just macros.  This matches Jinja.
+	            // this.emitLine('if(frame.topLevel) {');
+	            // END CUSTOMIZATION
 	            this.emitLine('context.setVariable("' + name + '", ' + id + ');');
-	            this.emitLine('}');
+	            // BEGIN CUSTOMIZATION
+	            // this.emitLine('}');
+	            // END CUSTOMIZATION
 
 	            if(name.charAt(0) !== '_') {
-	                this.emitLine('if(frame.topLevel) {');
+	                // BEGIN CUSTOMIZATION
+	                // this.emitLine('if(frame.topLevel) {');
+	                // END CUSTOMIZATION
 	                this.emitLine('context.addExport("' + name + '", ' + id + ');');
-	                this.emitLine('}');
+	                // BEGIN CUSTOMIZATION
+	                // this.emitLine('}');
+	                // END CUSTOMIZATION
 	            }
 	        }, this);
 	    },
@@ -2959,6 +2967,11 @@ var nunjucks =
 	                      tag.lineno,
 	                      tag.colno);
 	        }
+
+	        // PINTEREST CUSTOMIZATION BEGIN
+	        // Skip over the "scoped" modifier.
+	        this.skipSymbol('scoped');
+	        // PINTEREST CUSTOMIZATION BEGIN
 
 	        this.advanceAfterBlockEnd(tag.value);
 
